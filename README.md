@@ -15,12 +15,18 @@
 ## 配置
 - 你的chromedriver路径，默认为 `/usr/bin/chromedriver`
 - 输出图片大小 (width * height)，默认为 `1200 x 800`
-- 背景图片路径，默认为空
+- 背景图片路径，默认为空，不推荐与暗色主体配合
+- 主体是否为暗色主体，默认为 `false`
 
 ## 计划
 - 替换LLM的Markdown输出，直接转成图片防止bot刷屏 ~~(主要是为了美观)~~
 
+## 更新日志
+### v1.0
+初始版本
+
 ## 支持
 
 [帮助文档](https://astrbot.app)
+
 [模板来源](https://github.com/Soulter/helloworld)
