@@ -25,6 +25,10 @@
 ### v1.0
 初始版本
 
+## 声明
+本项目使用了 `github-markdown-light.css` 和 `github-markdown-dark.css` 作为主题
+具体协议见 [github-markdown-light license](https://github.com/sindresorhus/github-markdown-css/blob/main/license)
+
 ## 支持
 
 [帮助文档](https://astrbot.app)
