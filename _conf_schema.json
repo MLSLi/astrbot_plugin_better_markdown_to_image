@@ -1,0 +1,32 @@
+{
+    "chromedriver_path": {
+        "description": "chromedriver地址",
+        "type": "string",
+        "hint": "你的chromedriver地址",
+        "default": "/usr/bin/chromedriver"
+    },
+    "output_image_width": {
+        "description": "输出图片长度",
+        "type": "int",
+        "hint": "",
+        "default": 1200
+    },
+    "output_image_height": {
+        "description": "输出图片宽度",
+        "type": "int",
+        "hint": "",
+        "default": 800
+    },
+    "background_image": {
+        "description": "背景图片",
+        "type": "string",
+        "hint": "如果需要的话，输入背景图片的路径",
+        "default": ""
+    },
+    "is_dark_theme": {
+        "description": "是否为暗色主题",
+        "type": "bool",
+        "hint": "",
+        "default": false
+    }
+}
