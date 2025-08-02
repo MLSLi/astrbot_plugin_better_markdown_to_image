@@ -16,11 +16,39 @@ import pathlib
 
 @register("bettermd2img", "MLSLi", "更好的Markdown转图片", "1.0.0")
 class MyPlugin(Star):
+    def replace_wrapper(self,
+                    text: str,
+                    prefix: str,
+                    suffix: str,
+                    new_prefix: str,
+                    new_suffix: str) -> str:
+        # 1. 转义前缀/后缀里的正则元字符
+        escaped_prefix = re.escape(prefix)
+        escaped_suffix = re.escape(suffix)
+
+        # 2. 构造正则：(?s) 让 . 可以跨行匹配
+        pattern = rf'(?s){escaped_prefix}(.*?){escaped_suffix}'
+
+        # 3. 替换：\1 就是“中间字符串”
+        repl = f'{new_prefix}\\1{new_suffix}'
+
+        return re.sub(pattern, repl, text)
+
     async def mdtext_to_image(self, text):
         html = self.md.convert(text)
+        html = self.replace_wrapper(
+            html,
+            '<p>\n<script type="math/tex; mode=display">',
+            '</script>\n</p>',
+            '<div>\\[',
+            '\\]</div>'
+        )
+        # logger.info(html)
+        
         css_theme_path = self.light_theme_css_path
         if self.is_dark_theme:
             css_theme_path = self.dark_theme_css_path
+            
         if self.background_image:
             try:
                 # 标准化路径并转义特殊字符
@@ -31,16 +59,16 @@ class MyPlugin(Star):
                 
                 bg_url = bg_path.replace(" ", "%20")
                 # logger.info(self.background_template.format(bg_url))
-                html_text = self.html_template.format(css_theme_path, self.html_style, self.background_template.format(bg_url), html)
+                html_text = self.html_template.format(css_theme_path, self.html_style, self.script, self.background_template.format(bg_url), html)
 
             except Exception as e:
                 logger.error(f"背景图处理失败: {e}")
-                html_text = self.html_template.format(css_theme_path, self.html_style, "", html)  # 降级为无背景
+                html_text = self.html_template.format(css_theme_path, self.html_style, self.script, "", html)  # 降级为无背景
 
         else:
-            html_text = self.html_template.format(css_theme_path, self.html_style, "", html)
+            html_text = self.html_template.format(css_theme_path, self.html_style, self.script, "", html)
 
-        logger.info(html_text)
+        # logger.info(html_text)
         temp_html_path = os.path.abspath("temp.html")
         screenshot_path = os.path.abspath("screenshot.png")
 
@@ -77,10 +105,9 @@ class MyPlugin(Star):
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
             <link rel="stylesheet" href="{}">
-            <style>
-            {}
-            </style>
-            <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+            <style> {} </style>
+            <script> {} </script>
+            <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
         </head>
         <body {}> 
         <article class="markdown-body">
@@ -103,11 +130,7 @@ class MyPlugin(Star):
             padding: 45px;
         }
         
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-            background-color: #fff !important;
-        }
-
+        body { font-family: sans-serif; padding: 20px; }
 
         @media (max-width: 767px) {
             .markdown-body {
@@ -116,18 +139,26 @@ class MyPlugin(Star):
         }
         """
 
+        self.script = """
+        MathJax = {
+            tex: {
+            inlineMath: [['$', '$']],
+            tags: 'ams'  // 启用\tag{}
+            }
+        };
+        """
+
         self.chromedriver_path = config.get("chromedriver_path", "/usr/bin/chromedriver")
         self.output_image_width = config.get("output_image_width", 1200)
         self.output_image_height = config.get("output_image_height", 800)
         self.background_image = config.get("background_image", "")
         self.is_dark_theme = config.get("is_dark_theme", False)
-
         self.light_theme_css_path = os.path.dirname(os.path.realpath(__file__)) + os.sep + "github-markdown-light.css"
         self.dark_theme_css_path = os.path.dirname(os.path.realpath(__file__)) + os.sep + "github-markdown-dark.css"
 
         # 配置无头浏览器
         chrome_options = Options()
-        chrome_options.add_argument("--headless=new")
+        chrome_options.add_argument("--headless")
         chrome_options.add_argument("--disable-gpu")
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
