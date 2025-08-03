@@ -28,5 +28,11 @@
         "type": "bool",
         "hint": "",
         "default": false
+    },
+    "md2img_len_limit": {
+        "description": "LLM输出结果超过字数超过多少后转为图片，小于等于0则禁用",
+        "type": "int",
+        "hint": "",
+        "default": 100
     }
 }
