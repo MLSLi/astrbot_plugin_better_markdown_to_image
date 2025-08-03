@@ -13,11 +13,14 @@
 - 由于使用了chromium进行渲染，在性能较差的主机上运行可能会比较耗时
 
 ## 配置
-- 你的chromedriver路径，默认为 `/usr/bin/chromedriver`
-- 输出图片大小 (width * height)，默认为 `1200 x 800`
-- 背景图片路径，默认为空，不推荐与暗色主体配合
-- 主体是否为暗色主体，默认为 `false`
-
+| 配置名      | 描述 | 默认值     |
+|    :---:    |    :----:   |     :---:     |
+| chromedriver_path      | chromedriver路径       | /usr/bin/chromedriver   |
+| output_image_width  | 输出图片长度        | 1200      |
+| output_image_height| 输出图片宽度 | 800|
+| background_image  |  背景图片  |空   |
+| is_dark_theme   |  是否为暗色主题  |  false|
+| md2img_len_limit|  LLM输出结果超过字数超过多少后转为图片|  100|
 ## 计划
 - 替换LLM的Markdown输出，直接转成图片防止bot刷屏 ~~(主要是为了美观)~~
 
