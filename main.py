@@ -236,7 +236,7 @@ class MyPlugin(Star):
             }
         };
         """
-        # 魔法强力胶！
+        # 一堆html样式和模板，没错，是魔法强力胶！
 
         self.chromedriver_path = config.get("chromedriver_path", "/usr/bin/chromedriver")
         self.output_image_width = config.get("output_image_width", 1200)
@@ -244,16 +244,16 @@ class MyPlugin(Star):
         self.background_image = config.get("background_image", "")
         self.is_dark_theme = config.get("is_dark_theme", False)
         self.md2img_len_limit = config.get("md2img_len_limit", 100)
-
+        # 一堆配置
         self.light_theme_css_path = os.path.dirname(os.path.realpath(__file__)) + os.sep + "github-markdown-light.css"
         self.dark_theme_css_path = os.path.dirname(os.path.realpath(__file__)) + os.sep + "github-markdown-dark.css"
-        
+        # 获取样式绝对路径
         self.browser_config = {
             "chromedriver_path": self.chromedriver_path,
             "output_image_width": self.output_image_width,
             "output_image_height": self.output_image_height
         }
-
+        # 浏览器配置
     async def initialize(self):
         """可选择实现异步的插件初始化方法，当实例化该插件类之后会自动调用该方法。"""
         await self._browser_manager.get_browser(self.browser_config)
@@ -269,7 +269,7 @@ class MyPlugin(Star):
         
         pattern = r'^' + re.escape('md2img')
         message_str = re.sub(pattern, '', message_str)
-
+        # 去掉指令开头内容
         if not message_str:
             yield event.plain_result("请输入要转换的Markdown内容")
             return
@@ -305,7 +305,7 @@ class MyPlugin(Star):
                     self.browser_config,
                     lambda browser: self.mdtext_to_image(rawtext, browser)
                 )
-
+                # 转图片
                 msg_chain = MessageChain().file_image(path = image_path)
                 await event.send(msg_chain)
 
