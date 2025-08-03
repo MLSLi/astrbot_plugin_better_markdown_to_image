@@ -28,7 +28,6 @@ class BrowserManager:
             if cls._instance is None:
                 cls._instance = super().__new__(cls)
                 cls._instance._browser = None
-                cls._instance._ref_count = 0
                 cls._instance._browser_lock = asyncio.Lock()
             return cls._instance
     
@@ -44,17 +43,18 @@ class BrowserManager:
                 chrome_options.add_argument(f"--window-size={config['output_image_width']},{config['output_image_height']}")
                 
                 chromedriver_path = config.get("chromedriver_path", "/usr/bin/chromedriver")
+
                 try:
                     self._browser = webdriver.Chrome(
                         service=Service(chromedriver_path), 
                         options=chrome_options
                     )
                     logger.info("浏览器实例已创建")
+
                 except Exception as e:
                     logger.error(f"浏览器启动失败: {str(e)}")
                     raise
             
-            self._ref_count += 1
             return self._browser
     
     async def release_browser(self):
@@ -64,8 +64,10 @@ class BrowserManager:
                 try:
                     self._browser.quit()
                     logger.info("浏览器实例已关闭")
+
                 except Exception as e:
                     logger.error(f"浏览器关闭失败: {str(e)}")
+
                 finally:
                     self._browser = None
     
@@ -96,6 +98,7 @@ class MyPlugin(Star):
             if 'mode=display' in tag['type'].lower():
                 new_content = f"\\[{math_text}\\]"
                 wrapper = soup.new_tag("div", attrs={"class": "block-math"})
+
             else:
                 new_content = f"${math_text}$"
                 wrapper = soup.new_tag("div", attrs={"class": "inline-math"})
@@ -161,9 +164,13 @@ class MyPlugin(Star):
         super().__init__(context)
         
         self.md = Markdown(
-            extensions=['mdx_math', 'extra'],
-            extension_configs={
-            'mdx_math': {'enable_dollar_delimiter': True}
+            extensions = ['mdx_math', 'extra', 'tables', 'codehilite'],
+            extension_configs = {
+            'mdx_math': {'enable_dollar_delimiter': True},
+            'codehilite': {
+                'guess_lang': False,  # 禁用自动语言检测
+                'pygments_style': 'monokai'  # 设置代码高亮样式
+                }
             }
         ) # Markdown配置，使其支持数学表达式
 
@@ -172,7 +179,7 @@ class MyPlugin(Star):
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
-            <link rel="stylesheet" href="{}">
+            <link rel="stylesheet" type="text/css" href="{}">
             <style> {} </style>
             <script> {} </script>
             <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
@@ -240,7 +247,7 @@ class MyPlugin(Star):
 
         self.light_theme_css_path = os.path.dirname(os.path.realpath(__file__)) + os.sep + "github-markdown-light.css"
         self.dark_theme_css_path = os.path.dirname(os.path.realpath(__file__)) + os.sep + "github-markdown-dark.css"
-
+        
         self.browser_config = {
             "chromedriver_path": self.chromedriver_path,
             "output_image_width": self.output_image_width,
@@ -285,7 +292,6 @@ class MyPlugin(Star):
 
     async def terminate(self):
         """可选择实现异步的插件销毁方法，当插件被卸载/停用时会调用。"""
-        await self._browser_manager.release_browser()
 
     @filter.on_llm_response()
     async def on_llm_resp(self, event: AstrMessageEvent, resp: LLMResponse):
@@ -310,4 +316,5 @@ class MyPlugin(Star):
             except Exception as e:
                 logger.error(f"处理失败: {str(e)}")
                 msg_chain = MessageChain().message(message = f"处理失败: {str(e)}")
+
                 await event.send(msg_chain)

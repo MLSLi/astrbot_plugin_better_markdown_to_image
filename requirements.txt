@@ -2,3 +2,4 @@ selenium
 markdown
 python-markdown-math
 asyncio
+pygments
