@@ -11,13 +11,12 @@ from astrbot.api.star import Context, Star, register
 from astrbot.api import logger, AstrBotConfig
 from astrbot.api.provider import LLMResponse
 
-import time
 import os
 import asyncio
 import re
 import pathlib
 import threading
-import weakref
+import tempfile
 
 class BrowserManager:
     _instance = None
@@ -46,8 +45,8 @@ class BrowserManager:
 
                 try:
                     self._browser = webdriver.Chrome(
-                        service=Service(chromedriver_path), 
-                        options=chrome_options
+                        service = Service(chromedriver_path), 
+                        options = chrome_options
                     )
                     logger.info("浏览器实例已创建")
 
@@ -80,11 +79,49 @@ class BrowserManager:
             finally:
                 # 不立即释放，保持浏览器实例活跃
                 pass
+                
+    async def shutdown_browser(self):
+        with self._lock:
+            if self._browser is not None:
+                try:
+                    self._browser.quit()
+                    logger.info("浏览器实例已关闭")
+                    
+                except Exception as e:
+                    logger.error(f"浏览器关闭失败: {str(e)}")
+                    
+                finally:
+                    self._browser = None
 
 @register("bettermd2img", "MLSLi", "更好的Markdown转图片", "1.0.0")
 class MyPlugin(Star):
 
     _browser_manager = BrowserManager()
+
+    async def _generate_and_send_image(self, text: str, event: AstrMessageEvent, is_llm_response: bool):
+        try:
+            image_path = await self._browser_manager.execute_with_browser(
+            self.browser_config,
+            lambda browser: self.mdtext_to_image(text, browser)
+            )
+            # 转换失败就 yield，成功就send
+            if is_llm_response: 
+                await event.send(MessageChain().file_image(path=image_path))
+            else:
+                yield event.image_result(image_path)
+
+            await asyncio.sleep(10)
+            if os.path.exists(image_path):
+                os.remove(image_path)
+
+        except Exception as e:
+            logger.error(f"处理失败: {str(e)}")
+            error_msg = f"转换失败: {str(e)}"
+
+            if is_llm_response:
+                await event.send(MessageChain().message(message = error_msg))
+            else:
+                yield event.plain_result(error_msg)
 
     async def mdtext_to_image(self, text, browser):
         html = self.md.convert(text)
@@ -135,20 +172,21 @@ class MyPlugin(Star):
             html_text = self.html_template.format(css_theme_path, self.html_style, self.script, "", html)
 
         logger.info(html_text)
-        temp_html_path = os.path.abspath("temp.html")
-        screenshot_path = os.path.abspath("screenshot.png")
+
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".html", delete=False) as f:
+                temp_html_path = f.name
+                f.write(html_text)
+            
+        screenshot_path = temp_html_path.replace(".html", ".png")
 
         try:
-            with open(temp_html_path, "w", encoding="utf-8") as f:
-                f.write(html_text)
-
             browser.get(pathlib.Path(temp_html_path).as_uri())
 
             # 等待 JavaScript 执行完成（根据内容调整等待时间）
-            time.sleep(2)  # 对于 MathJax 可能需要更长时间
+            await asyncio.sleep(2)  # 对于 MathJax 可能需要更长时间
 
             # 截图保存
-            browser.save_screenshot(os.path.abspath(screenshot_path))
+            browser.save_screenshot(screenshot_path)
 
         except Exception as e:
             logger.error(f"转换失败: {str(e)}")
@@ -274,23 +312,11 @@ class MyPlugin(Star):
             yield event.plain_result("请输入要转换的Markdown内容")
             return
 
-        try:
-            image_path = await self._browser_manager.execute_with_browser(
-                self.browser_config,
-                lambda browser: self.mdtext_to_image(message_str, browser)
-            )
-            
-            yield event.image_result(image_path)
-
-            await asyncio.sleep(10)
-            if os.path.exists(image_path):
-                os.remove(image_path)
-
-        except Exception as e:
-            logger.error(f"处理失败: {str(e)}")
-            yield event.plain_result(f"转换失败: {str(e)}")
+        async for result in self._generate_and_send_image(message_str, event, False):
+            yield result
 
     async def terminate(self):
+        await self._browser_manager.shutdown_browser()
         """可选择实现异步的插件销毁方法，当插件被卸载/停用时会调用。"""
 
     @filter.on_llm_response()
@@ -300,6 +326,7 @@ class MyPlugin(Star):
         # logger.info(rawtext)
         
         if len(rawtext) > self.md2img_len_limit and self.md2img_len_limit > 0:
+<<<<<<< HEAD
             try:
                 image_path = await self._browser_manager.execute_with_browser(
                     self.browser_config,
@@ -318,3 +345,7 @@ class MyPlugin(Star):
                 msg_chain = MessageChain().message(message = f"处理失败: {str(e)}")
 
                 await event.send(msg_chain)
+=======
+            async for _ in self._generate_and_send_image(rawtext, event, True):
+                pass  # 不需要处理生成器产生的值
+>>>>>>> 3f153aa (Listen to some suggestions)
