@@ -326,7 +326,6 @@ class MyPlugin(Star):
         # logger.info(rawtext)
         
         if len(rawtext) > self.md2img_len_limit and self.md2img_len_limit > 0:
-<<<<<<< HEAD
             try:
                 image_path = await self._browser_manager.execute_with_browser(
                     self.browser_config,
@@ -345,7 +344,5 @@ class MyPlugin(Star):
                 msg_chain = MessageChain().message(message = f"处理失败: {str(e)}")
 
                 await event.send(msg_chain)
-=======
             async for _ in self._generate_and_send_image(rawtext, event, True):
                 pass  # 不需要处理生成器产生的值
->>>>>>> 3f153aa (Listen to some suggestions)
