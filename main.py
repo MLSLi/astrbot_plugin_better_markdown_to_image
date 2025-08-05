@@ -1,7 +1,6 @@
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver import Chrome
 from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
 from markdown import Markdown
 from bs4 import BeautifulSoup
 from bs4.element import NavigableString
@@ -21,17 +20,19 @@ import tempfile
 class BrowserManager:
     _instance = None
     _lock = threading.Lock()
-    
+
     def __new__(cls):
         with cls._lock:
             if cls._instance is None:
                 cls._instance = super().__new__(cls)
                 cls._instance._browser = None
+                cls._instance._ref_count = 0
                 cls._instance._browser_lock = asyncio.Lock()
+                cls._instance._async_lock = asyncio.Lock()
             return cls._instance
     
     async def get_browser(self, config):
-        with self._lock:
+        async with self._async_lock:
             if self._browser is None:
                 # 配置无头浏览器
                 chrome_options = Options()
@@ -40,13 +41,15 @@ class BrowserManager:
                 chrome_options.add_argument("--no-sandbox")
                 chrome_options.add_argument("--disable-dev-shm-usage")
                 chrome_options.add_argument(f"--window-size={config['output_image_width']},{config['output_image_height']}")
-                
-                chromedriver_path = config.get("chromedriver_path", "/usr/bin/chromedriver")
 
                 try:
-                    self._browser = webdriver.Chrome(
-                        service = Service(chromedriver_path), 
-                        options = chrome_options
+                    loop = asyncio.get_running_loop()
+                    self._browser = await loop.run_in_executor(
+                        None,
+                        lambda: Chrome(
+                            service = Service(config['chromedriver_path']),
+                            options = chrome_options
+                        )
                     )
                     logger.info("浏览器实例已创建")
 
@@ -54,14 +57,18 @@ class BrowserManager:
                     logger.error(f"浏览器启动失败: {str(e)}")
                     raise
             
+            self._ref_count += 1  # 增加引用计数
             return self._browser
     
     async def release_browser(self):
-        with self._lock:
-            self._ref_count -= 1
-            if self._ref_count <= 0 and self._browser is not None:
+        async with self._async_lock:
+            self._ref_count = max(0, self._ref_count - 1)
+            if self._ref_count == 0 and self._browser is not None:
                 try:
-                    self._browser.quit()
+                    await asyncio.get_running_loop().run_in_executor(
+                        None, 
+                        self._browser.quit()
+                    )
                     logger.info("浏览器实例已关闭")
 
                 except Exception as e:
@@ -72,19 +79,21 @@ class BrowserManager:
     
     async def execute_with_browser(self, config, func):
         # 获取浏览器实例锁，确保同一时间只有一个任务使用浏览器
-        async with self._browser_lock:
-            browser = await self.get_browser(config)
-            try:
+        browser = await self.get_browser(config)
+        try:
+            async with self._browser_lock:
                 return await func(browser)
-            finally:
-                # 不立即释放，保持浏览器实例活跃
-                pass
+        finally:
+            await self.release_browser() # 确保释放资源
                 
     async def shutdown_browser(self):
-        with self._lock:
+        async with self._async_lock:
             if self._browser is not None:
                 try:
-                    self._browser.quit()
+                    await asyncio.get_running_loop().run_in_executor(
+                        None, 
+                        self._browser.quit()
+                    )
                     logger.info("浏览器实例已关闭")
                     
                 except Exception as e:
@@ -92,6 +101,7 @@ class BrowserManager:
                     
                 finally:
                     self._browser = None
+                    self._ref_count = 0
 
 @register("bettermd2img", "MLSLi", "更好的Markdown转图片", "1.0.0")
 class MyPlugin(Star):
@@ -104,7 +114,7 @@ class MyPlugin(Star):
             self.browser_config,
             lambda browser: self.mdtext_to_image(text, browser)
             )
-            # 转换失败就 yield，成功就send
+            # 判断是否是LLM回复
             if is_llm_response: 
                 await event.send(MessageChain().file_image(path=image_path))
             else:
@@ -327,22 +337,13 @@ class MyPlugin(Star):
         
         if len(rawtext) > self.md2img_len_limit and self.md2img_len_limit > 0:
             try:
-                image_path = await self._browser_manager.execute_with_browser(
-                    self.browser_config,
-                    lambda browser: self.mdtext_to_image(rawtext, browser)
-                )
-                # 转图片
-                msg_chain = MessageChain().file_image(path = image_path)
-                await event.send(msg_chain)
-
-                await asyncio.sleep(10)
-                if os.path.exists(image_path):
-                    os.remove(image_path)
+                async for _ in self._generate_and_send_image(rawtext, event, True):
+                    pass  # 不需要处理生成器产生的值
 
             except Exception as e:
                 logger.error(f"处理失败: {str(e)}")
                 msg_chain = MessageChain().message(message = f"处理失败: {str(e)}")
 
                 await event.send(msg_chain)
-            async for _ in self._generate_and_send_image(rawtext, event, True):
-                pass  # 不需要处理生成器产生的值
+        else:
+            pass
