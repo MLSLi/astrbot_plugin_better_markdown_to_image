@@ -21,7 +21,7 @@
 | output_image_height| 输出图片宽度 | 800|
 | background_image  |  背景图片  |空   |
 | is_dark_theme   |  是否为暗色主题  |  false|
-| md2img_len_limit|  LLM输出结果超过字数超过多少后转为图片|  100|
+| md2img_len_limit|  LLM输出结果超过多少长度后转为图片|  100|
 ## 计划
 - 支持代码高亮 ~~不过得等一段时间~~
 
