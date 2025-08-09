@@ -206,7 +206,7 @@ class EscapedCodeExtension(Extension):
             115
         )
 
-@register("bettermd2img", "MLSLi", "更好的Markdown转图片", "1.0.0")
+@register("bettermd2img", "MLSLi", "更好的Markdown转图片", "1.1.0")
 class MyPlugin(Star):
 
     _browser_manager = BrowserManager()
