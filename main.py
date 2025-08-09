@@ -1,13 +1,8 @@
 from selenium.webdriver import Chrome
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-<<<<<<< HEAD
-from markdown import Markdown
-from bs4 import BeautifulSoup
-from bs4.element import NavigableString
-=======
->>>>>>> e1058df (Updated to v1.1)
 
+from markdown import Markdown
 from markdown import Markdown
 from markdown.extensions import Extension
 from markdown.blockprocessors import BlockProcessor
