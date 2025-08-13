@@ -104,7 +104,7 @@ class BrowserManager:
                     self._browser = None
                     self._ref_count = 0
 
-@register("bettermd2img", "MLSLi", "更好的Markdown转图片", "1.1.1")
+@register("bettermd2img", "MLSLi", "更好的Markdown转图片", "1.1.2")
 class MyPlugin(Star):
 
     _browser_manager = BrowserManager()
@@ -135,7 +135,7 @@ class MyPlugin(Star):
         # match.group(0): 完整匹配项
         # match.group(1): 开头的空格
         # match.group(2): 中间内容
-            # match.group(3): 结尾的空格
+        # match.group(3): 结尾的空格
             content = match.group(2)
             return f"\n```{content}\n```\n"
     
@@ -311,10 +311,25 @@ class MyPlugin(Star):
             border-radius: 0 !important;
         }
         .highlight .err {
-        border: none !important;
-        background: none !important;
-        color: inherit !important;
+            border: none !important;
+            background: none !important;
+            color: inherit !important;
         }
+        """
+
+        self.code_font_style = """
+            .codehilite,
+            .codehilite pre,
+            .codehilite code {
+                font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace !important;
+                font-size: 12px;
+            }
+            .codehilite {
+                background: BG;
+                padding: 10px;
+                border-radius: 4px;
+                border: 1px solid #ddd;
+            }
         """
         # 一堆html样式和模板，没错，是魔法强力胶！
 
@@ -335,7 +350,7 @@ class MyPlugin(Star):
             "output_image_height": self.output_image_height
         }
         # 浏览器配置
-        self.code_css_styles = HtmlFormatter().get_style_defs('.codehilite') + self.no_boaders
+        self.code_css_styles = HtmlFormatter().get_style_defs('.codehilite') + self.no_boaders + self.code_font_style.replace("BG", "#2d2d2d" if self.is_dark_theme else "#f8f8f8")
         # 代码高亮
 
     async def initialize(self):
