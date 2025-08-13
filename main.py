@@ -305,12 +305,12 @@ class MyPlugin(Star):
         """
 
         self.no_boaders = """
-        pre, .highlight, td.linenos, td.linenos .normal, 
+        pre, .codehilite, td.linenos, td.linenos .normal, 
         td.linenos .special, span.linenos, span.linenos.special,
-        .highlight .hll, .highlight table, .highlight td {
+        .codehilite .hll, .codehilite table, .codehilite td {
             border-radius: 0 !important;
         }
-        .highlight .err {
+        .codehilite .err {
             border: none !important;
             background: none !important;
             color: inherit !important;
@@ -318,18 +318,11 @@ class MyPlugin(Star):
         """
 
         self.code_font_style = """
-            .codehilite,
-            .codehilite pre,
-            .codehilite code {
-                font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace !important;
-                font-size: 12px;
-            }
-            .codehilite {
-                background: BG;
-                padding: 10px;
-                border-radius: 4px;
-                border: 1px solid #ddd;
-            }
+        .codehilite {
+        font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace !important;
+            background: BG;
+            border-radius: 0px;
+        }
         """
         # 一堆html样式和模板，没错，是魔法强力胶！
 
