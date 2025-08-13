@@ -3,20 +3,13 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 
 from markdown import Markdown
-from markdown.extensions import Extension
-from markdown.blockprocessors import BlockProcessor
 
-
-from pygments import highlight
 from pygments.formatters import HtmlFormatter
-from pygments.lexers import guess_lexer
 
 from astrbot.api.event import filter, AstrMessageEvent, MessageChain
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger, AstrBotConfig
 from astrbot.api.provider import LLMResponse
-
-import xml.etree.ElementTree as etree
 
 import os
 import asyncio
@@ -24,7 +17,6 @@ import re
 import pathlib
 import threading
 import tempfile
-import html
 
 class BrowserManager:
     _instance = None
@@ -112,101 +104,7 @@ class BrowserManager:
                     self._browser = None
                     self._ref_count = 0
 
-class EscapedCodeBlockProcessor(BlockProcessor):
-    """正确处理多行代码块，包括完整识别代码块结束标记"""
-    RE_FENCE_START = r'^ {0,3}(`{3,}|~{3,})[ ]*([\w-]*)?[ ]*\n'
-    
-    def test(self, parent, block):
-        return re.match(self.RE_FENCE_START, block)
-    
-    def run(self, parent, blocks):
-        original_block = blocks[0]
-        start_match = re.match(self.RE_FENCE_START, original_block)
-        
-        if not start_match:
-            return False
-            
-        # 提取起始标记和语言类型
-        start_fence = start_match.group(1)
-        lang_type = start_match.group(2) or ''
-        # 结束标记必须与起始标记使用相同的字符
-        end_pattern = r'^ {0,3}' + re.escape(start_fence) + r'[ ]*$'
-        
-        # 移除起始行，保留内容
-        content_lines = original_block[start_match.end():].split('\n')
-        found_end = False
-        code_lines = []
-        
-        # 首先处理原始块中的内容
-        for i, line in enumerate(content_lines):
-            line_stripped = line.strip()
-            if line_stripped.startswith(start_fence) and re.match(end_pattern, line_stripped):
-                # 处理同一块内的结束标记
-                found_end = True
-                break
-            code_lines.append(line)
-        
-        # 如果原始块中没找到结束标记，检查后续块
-        block_index = 1
-        while not found_end and block_index < len(blocks):
-            block_lines = blocks[block_index].split('\n')
-            for j, line in enumerate(block_lines):
-                line_stripped = line.strip()
-                if line_stripped.startswith(start_fence) and re.match(end_pattern, line_stripped):
-                    found_end = True
-                    # 保存结束标记之后的内容
-                    remaining_lines = '\n'.join(block_lines[j+1:])
-                    if remaining_lines:
-                        # 将剩余内容放回块中
-                        blocks[block_index] = remaining_lines
-                    else:
-                        # 删除空块
-                        del blocks[block_index]
-                    break
-                code_lines.append(line)
-            
-            if found_end:
-                break
-                
-            block_index += 1
-        
-        # 处理结束标记未找到的情况
-        if not found_end:
-            # 恢复原始块，视为普通文本
-            blocks[0] = original_block
-            return False
-        
-        # 删除已处理的块
-        del blocks[0]  # 移除原始块
-        for i in range(1, block_index):
-            del blocks[0]  # 移除已处理的后续块
-        
-        # 合并代码内容
-        full_code = '\n'.join(code_lines).rstrip('\n')
-        escaped_code = html.escape(full_code)
-        
-        # 创建容器并添加转义后的代码
-        container = etree.SubElement(parent, 'div')
-        container.set('class', 'custom-code-container')
-        pre = etree.SubElement(container, 'pre')
-        if lang_type:
-            pre.set('class', f'language-{lang_type}')
-        code_elem = etree.SubElement(pre, 'code')
-        code_elem.text = escaped_code + '\n'
-        
-        return True
-
-class EscapedCodeExtension(Extension):
-    """Markdown 扩展：正确处理带结束标记的代码块"""
-    def extendMarkdown(self, md):
-        # 注册处理器，优先级高于标准代码块处理器
-        md.parser.blockprocessors.register(
-            EscapedCodeBlockProcessor(md.parser), 
-            'escaped_code', 
-            115
-        )
-
-@register("bettermd2img", "MLSLi", "更好的Markdown转图片", "1.1")
+@register("bettermd2img", "MLSLi", "更好的Markdown转图片", "1.1.1")
 class MyPlugin(Star):
 
     _browser_manager = BrowserManager()
@@ -222,19 +120,27 @@ class MyPlugin(Star):
         
         result_str = compiled_pattern.sub(replace_match, input_str)
         return result_str
-
-    def _code_highlighting(self, code):
-        code = html.unescape(code)
-        lexer = guess_lexer(code)
-        highlighted_html = highlight(code, lexer, self.formatter)
- 
-        return highlighted_html
     
     def _in_block_str(self, text):
         return '<div class="block-math">\\[' + text + '\\]</div>'
     
     def _in_line_str(self, text):
         return '<div class="inline-math">$' + text + '$</div>'
+
+    def _clean_code_blocks(self, text):
+        # 正则表达式匹配三个反引号包围的代码块
+        pattern = r"(\s*)```(?:\s*\n?)([\s\S]*?)(?:\n?\s*)```(\s*)"
+    
+        def replace_match(match):
+        # match.group(0): 完整匹配项
+        # match.group(1): 开头的空格
+        # match.group(2): 中间内容
+            # match.group(3): 结尾的空格
+            content = match.group(2)
+            return f"\n```{content}\n```\n"
+    
+    # re.DOTALL确保.匹配换行符
+        return re.sub(pattern, replace_match, text, flags=re.DOTALL)    
 
     async def _generate_and_send_image(self, text: str, event: AstrMessageEvent, is_llm_response: bool):
         try:
@@ -262,11 +168,13 @@ class MyPlugin(Star):
                 yield event.plain_result(error_msg)
 
     async def mdtext_to_image(self, text, browser):
+        text = self._clean_code_blocks(text)
+        
         html = self.md.convert(text)
-        html = self._replace_by_func(html, '<code>', '</code>', self._code_highlighting)
+
         html = self._replace_by_func(html, '<script type="math/tex; mode=display">', '</script>', self._in_block_str)
         html = self._replace_by_func(html, '<script type="math/tex">', '</script>', self._in_line_str)
-        logger.info(html)
+        # logger.info(html)
         
         css_theme_path = self.light_theme_css_path
         if self.is_dark_theme:
@@ -322,7 +230,7 @@ class MyPlugin(Star):
         super().__init__(context)
         
         self.md = Markdown(
-            extensions = ['mdx_math', 'extra', 'tables', 'codehilite', EscapedCodeExtension()],
+            extensions = ['mdx_math', 'extra', 'tables', 'codehilite'],
             extension_configs = {
             'mdx_math': {'enable_dollar_delimiter': True},
             'codehilite': {
@@ -400,9 +308,6 @@ class MyPlugin(Star):
         pre, .highlight, td.linenos, td.linenos .normal, 
         td.linenos .special, span.linenos, span.linenos.special,
         .highlight .hll, .highlight table, .highlight td {
-            border: none !important;
-            background: none !important;
-            box-shadow: none !important;
             border-radius: 0 !important;
         }
         .highlight .err {
@@ -430,12 +335,12 @@ class MyPlugin(Star):
             "output_image_height": self.output_image_height
         }
         # 浏览器配置
-        self.formatter = HtmlFormatter(linenos=False, cssclass = "highlight", style = "github-dark" if self.is_dark_theme else "default")
-        self.code_css_styles = HtmlFormatter().get_style_defs('.highlight') + self.no_boaders
+        self.code_css_styles = HtmlFormatter().get_style_defs('.codehilite') + self.no_boaders
         # 代码高亮
 
     async def initialize(self):
         """可选择实现异步的插件初始化方法，当实例化该插件类之后会自动调用该方法。"""
+        logger.info("正在配置浏览器...")
         await self._browser_manager.get_browser(self.browser_config)
 
     # Markdown转图片的命令
@@ -458,6 +363,7 @@ class MyPlugin(Star):
             yield result
 
     async def terminate(self):
+        logger.info("正在销毁浏览器...")
         await self._browser_manager.shutdown_browser()
         """可选择实现异步的插件销毁方法，当插件被卸载/停用时会调用。"""
 

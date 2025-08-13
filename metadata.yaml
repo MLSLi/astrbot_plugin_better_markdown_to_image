@@ -1,5 +1,5 @@
 name: astrbot_plugin_better_markdown_to_image # 这是你的插件的唯一识别名。
 desc: 更好的Markdown转图片，支持自动转换来自LLM的回复的Markdown内容和指令直接转换 # 插件简短描述
-version: v1.1.0 # 插件版本号。格式：v1.1.1 或者 v1.1
+version: v1.1.1 # 插件版本号。格式：v1.1.1 或者 v1.1
 author: MLSLi # 作者
 repo: https://github.com/MLSLi/astrbot_plugin_better_markdown_to_image # 插件的仓库地址
