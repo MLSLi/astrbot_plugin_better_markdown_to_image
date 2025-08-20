@@ -34,5 +34,11 @@
         "type": "int",
         "hint": "",
         "default": 100
+    },
+    "padding_below": {
+        "description": "如果高度自适应生效的话，对于生成的图片，向下填充多少个像素",
+        "type": "int",
+        "hint": "",
+        "default": 150
     }
 }

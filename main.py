@@ -41,6 +41,9 @@ class BrowserManager:
                 chrome_options.add_argument("--disable-gpu")
                 chrome_options.add_argument("--no-sandbox")
                 chrome_options.add_argument("--disable-dev-shm-usage")
+                chrome_options.add_argument("--allow-file-access-from-files")
+                chrome_options.add_argument("--disable-web-security")
+                chrome_options.add_argument("--allow-running-insecure-content")
                 chrome_options.add_argument(f"--window-size={config['output_image_width']},{config['output_image_height']}")
 
                 try:
@@ -104,7 +107,7 @@ class BrowserManager:
                     self._browser = None
                     self._ref_count = 0
 
-@register("bettermd2img", "MLSLi", "更好的Markdown转图片", "1.1.2")
+@register("bettermd2img", "MLSLi", "更好的Markdown转图片", "1.1.3")
 class MyPlugin(Star):
 
     _browser_manager = BrowserManager()
@@ -137,7 +140,7 @@ class MyPlugin(Star):
         # match.group(2): 中间内容
         # match.group(3): 结尾的空格
             content = match.group(2)
-            return f"\n```{content}\n```\n"
+            return f"\n```\n{content}\n```\n"
     
     # re.DOTALL确保.匹配换行符
         return re.sub(pattern, replace_match, text, flags=re.DOTALL)    
@@ -212,6 +215,25 @@ class MyPlugin(Star):
 
             # 等待 JavaScript 执行完成（根据内容调整等待时间）
             await asyncio.sleep(2)  # 对于 MathJax 可能需要更长时间
+
+            # 获取文档实际高度
+            document_height = browser.execute_script(
+                "return Math.max("
+                "document.body.scrollHeight, "
+                "document.body.offsetHeight, "
+                "document.documentElement.clientHeight, "
+                "document.documentElement.scrollHeight, "
+                "document.documentElement.offsetHeight"
+                ");"
+            )
+            document_height += self.padding_below
+
+            browser.set_window_size(
+                self.browser_config['output_image_width'],
+                max(document_height, self.output_image_height)
+            )
+
+            await asyncio.sleep(1)
 
             # 截图保存
             browser.save_screenshot(screenshot_path)
@@ -332,10 +354,13 @@ class MyPlugin(Star):
         self.background_image = config.get("background_image", "")
         self.is_dark_theme = config.get("is_dark_theme", False)
         self.md2img_len_limit = config.get("md2img_len_limit", 100)
+        self.padding_below = config.get("padding_below", 150)
+
         # 一堆配置
         self.local_path = os.path.dirname(os.path.realpath(__file__)) + os.sep
         self.light_theme_css_path = self.local_path + "github-markdown-light.css"
         self.dark_theme_css_path = self.local_path + "github-markdown-dark.css"
+
         # 获取文件绝对路径
         self.browser_config = {
             "chromedriver_path": self.chromedriver_path,
@@ -343,6 +368,7 @@ class MyPlugin(Star):
             "output_image_height": self.output_image_height
         }
         # 浏览器配置
+
         self.code_css_styles = HtmlFormatter().get_style_defs('.codehilite') + self.no_boaders + self.code_font_style.replace("BG", "#2d2d2d" if self.is_dark_theme else "#f8f8f8")
         # 代码高亮
 
