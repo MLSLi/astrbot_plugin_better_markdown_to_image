@@ -1,5 +1,5 @@
 # astrbot_plugin_better_markdown_to_image
-
+~~*注意：此插件已停止开发，因为有无浏览器版的平替了，所以我开摆了(doge)*~~
 ## 简介
 一个更好的Markdown转图片的AstrBot插件，使用chromium渲染由Markdown文本转换的html以更好地支持数学公式等较为复杂的情景
 
