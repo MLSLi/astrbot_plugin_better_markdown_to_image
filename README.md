@@ -1,5 +1,5 @@
 # astrbot_plugin_better_markdown_to_image
-~~*注意：此插件已停止开发，因为有无浏览器版的平替了，所以我开摆了(doge)*~~
+
 ## 简介
 一个更好的Markdown转图片的AstrBot插件，使用chromium渲染由Markdown文本转换的html以更好地支持数学公式等较为复杂的情景
 
@@ -38,7 +38,7 @@
 | padding_below | 如果高度自适应生效的话，对于生成的图片，向下填充多少个像素 | 150 |
 
 ## 计划
-- 虽然使用了单例控制chromium的进程数量，但是在反复热重载该插件后仍然会创建多个进程，后期若有机会会修复这个问题
+- 虽然使用了单例控制chromium的进程数量，但是在反复热重载该插件后仍然会创建多个进程，后期若有能力会修复这个问题
 
 ## 更新日志
 
@@ -69,3 +69,7 @@
 [帮助文档](https://astrbot.app)
 
 [模板来源](https://github.com/Soulter/helloworld)
+
+## 资源占用多，有bug?
+你可以尝试这个插件：
+[无浏览器版](https://github.com/luosheng520qaq/astrbot_plugin_nobrowser_markdown_to_pic)
