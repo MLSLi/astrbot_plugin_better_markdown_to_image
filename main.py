@@ -17,21 +17,45 @@ import re
 import pathlib
 import threading
 import tempfile
+import builtins
 
 class BrowserManager:
     _instance = None
     _lock = threading.Lock()
+    _builtin_name = "_astrbot_browser_manager_singleton"
 
     def __new__(cls):
+        # 如果上次加载时已经在 builtins 中注册过实例，直接重用
+        existing = getattr(builtins, cls._builtin_name, None)
+        if existing is not None:
+            # 重建 asyncio 锁，避免旧锁与新 loop 冲突
+            try:
+                existing._browser_lock = asyncio.Lock()
+                existing._async_lock = asyncio.Lock()
+            except Exception:
+                pass
+            return existing
+
         with cls._lock:
-            if cls._instance is None:
-                cls._instance = super().__new__(cls)
-                cls._instance._browser = None
-                cls._instance._ref_count = 0
-                cls._instance._browser_lock = asyncio.Lock()
-                cls._instance._async_lock = asyncio.Lock()
-            return cls._instance
-    
+            # 双重检查，确保线程安全
+            existing = getattr(builtins, cls._builtin_name, None)
+            if existing is not None:
+                try:
+                    existing._browser_lock = asyncio.Lock()
+                    existing._async_lock = asyncio.Lock()
+                except Exception:
+                    pass
+                return existing
+
+            inst = super().__new__(cls)
+            inst._browser = None
+            inst._ref_count = 0
+            inst._browser_lock = asyncio.Lock()
+            inst._async_lock = asyncio.Lock()
+            # 将实例放到 builtins，全局可访问并跨模块重载保留
+            setattr(builtins, cls._builtin_name, inst)
+            return inst
+
     async def get_browser(self, config):
         async with self._async_lock:
             if self._browser is None:
@@ -107,7 +131,7 @@ class BrowserManager:
                     self._browser = None
                     self._ref_count = 0
 
-@register("bettermd2img", "MLSLi", "更好的Markdown转图片", "1.1.3")
+@register("bettermd2img", "MLSLi", "更好的Markdown转图片", "1.1.4")
 class MyPlugin(Star):
 
     _browser_manager = BrowserManager()
@@ -410,7 +434,8 @@ class MyPlugin(Star):
         if len(rawtext) > self.md2img_len_limit and self.md2img_len_limit > 0:
             try:
                 async for _ in self._generate_and_send_image(rawtext, event, True):
-                    pass  # 不需要处理生成器产生的值
+                    return  # 不需要处理生成器产生的值
+                event.stop_event()  # 停止后续处理，避免重复发送文本消息
 
             except Exception as e:
                 logger.error(f"处理失败: {str(e)}")
