@@ -12,7 +12,7 @@
         "default": 1200
     },
     "output_image_height": {
-        "description": "输出图片宽度",
+        "description": "输出图片高度，如果高度自适应(超出输出内容才会生效)未生效",
         "type": "int",
         "hint": "",
         "default": 800
@@ -24,21 +24,27 @@
         "default": ""
     },
     "is_dark_theme": {
-        "description": "是否为暗色主题",
+        "description": "是否为暗色主题，默认为亮色",
         "type": "bool",
         "hint": "",
         "default": false
     },
     "md2img_len_limit": {
-        "description": "LLM输出结果超过字数超过多少后转为图片，小于等于0则禁用",
+        "description": "LLM输出结果超过字数超过多少后转为图片，小于等于0则禁用，注意转为图片后不会再发送文字消息",
         "type": "int",
         "hint": "",
         "default": 100
     },
     "padding_below": {
-        "description": "如果高度自适应生效的话，对于生成的图片，向下填充多少个像素",
+        "description": "如果高度自适应生效，对于生成的图片，向下填充多少个像素",
         "type": "int",
         "hint": "",
-        "default": 150
+        "default": 50
+    },
+    "device_scale_factor": {
+        "description": "设备缩放系数，一般为1.0",
+        "type": "float",
+        "hint": "",
+        "default": 1.0
     }
 }

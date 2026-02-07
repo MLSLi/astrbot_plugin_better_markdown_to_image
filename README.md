@@ -16,7 +16,7 @@
 
 ## 使用
 - 发送诸如以下的消息格式来使用：`/md2msg [Markdown文本]` (如果你更改了指令前缀，请按照更改后的来)
-- bot在LLM回复Markdown消息后自动转换成图片 (注意：字数低于阈值会跳过转换，且原Markdown文本仍然会输出)
+- bot在LLM回复Markdown消息后自动转换成图片 (注意：字数低于阈值会跳过转换)
 
 ## 注意事项
 - 在运行该插件前请检查 `chromium` 和 `chromedriver` 是否安装，且版本需相同。当然，还要检查是否能正常工作
@@ -24,23 +24,30 @@
 - 由于使用了chromium进行渲染，在性能较差的主机上运行可能会比较耗时
 - 由于是Markdown文本转图片，故链接之类的标记无法交互
 - 暂不支持Markdown的一些语法(如含程图)
-- 新人，如果有bug请友善告知，谢谢
+- 若发现自适应高度不起效，请更新requirements中的依赖库至最新版本
+- 背景图片建议自行裁剪，不建议在暗色主题时启用
 
 ## 配置
 | 配置名      | 描述 | 默认值     |
 |    :---:    |    :----:   |     :---:     |
 | chromedriver_path      | chromedriver路径       | /usr/bin/chromedriver   |
 | output_image_width  | 输出图片长度        | 1200      |
-| output_image_height| 输出图片宽度 | 800|
-| background_image  |  背景图片  |空   |
-| is_dark_theme   |  是否为暗色主题  |  false|
-| md2img_len_limit|  LLM输出结果超过多少长度后转为图片|  100|
-| padding_below | 如果高度自适应生效的话，对于生成的图片，向下填充多少个像素 | 150 |
+| output_image_height| 自适应未启用时的输出图片宽度 | 800 |
+| background_image  |  背景图片  | 空   |
+| is_dark_theme   |  是否为暗色主题  |  false |
+| md2img_len_limit|  LLM输出结果超过多少长度后转为图片|  100 |
+| padding_below | 对于生成的图片，自适应时向下填充的像素数 | 50 |
+| device_scale_factor | 缩放系数 | 1.0 |
 
 ## 计划
 - 支持更多Markdown语法???
 
 ## 更新日志
+
+### v1.2.0
+- 丢弃原有的chromium单例，处理速度大幅提升
+- 增加配置项device_scale_factor，解决高DPI显示器的显示问题
+- main.py的版本号问题(我打错了哈哈)
 
 ### v1.1.4
 - 在LLM输出的内容转成图片后，不会再次输出原文本

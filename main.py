@@ -1,6 +1,7 @@
 from selenium.webdriver import Chrome
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
 
 from markdown import Markdown
 
@@ -15,46 +16,14 @@ import os
 import asyncio
 import re
 import pathlib
-import threading
 import tempfile
-import builtins
 
 class BrowserManager:
-    _instance = None
-    _lock = threading.Lock()
-    _builtin_name = "_astrbot_browser_manager_singleton"
-
-    def __new__(cls):
-        # 如果上次加载时已经在 builtins 中注册过实例，直接重用
-        existing = getattr(builtins, cls._builtin_name, None)
-        if existing is not None:
-            # 重建 asyncio 锁，避免旧锁与新 loop 冲突
-            try:
-                existing._browser_lock = asyncio.Lock()
-                existing._async_lock = asyncio.Lock()
-            except Exception:
-                pass
-            return existing
-
-        with cls._lock:
-            # 双重检查，确保线程安全
-            existing = getattr(builtins, cls._builtin_name, None)
-            if existing is not None:
-                try:
-                    existing._browser_lock = asyncio.Lock()
-                    existing._async_lock = asyncio.Lock()
-                except Exception:
-                    pass
-                return existing
-
-            inst = super().__new__(cls)
-            inst._browser = None
-            inst._ref_count = 0
-            inst._browser_lock = asyncio.Lock()
-            inst._async_lock = asyncio.Lock()
-            # 将实例放到 builtins，全局可访问并跨模块重载保留
-            setattr(builtins, cls._builtin_name, inst)
-            return inst
+    def __init__(self):
+        self._browser = None
+        self._ref_count = 0
+        self._browser_lock = asyncio.Lock()
+        self._async_lock = asyncio.Lock()
 
     async def get_browser(self, config):
         async with self._async_lock:
@@ -69,14 +38,15 @@ class BrowserManager:
                 chrome_options.add_argument("--disable-web-security")
                 chrome_options.add_argument("--allow-running-insecure-content")
                 chrome_options.add_argument(f"--window-size={config['output_image_width']},{config['output_image_height']}")
+                chrome_options.add_argument(f"--force-device-scale-factor={config['device_scale_factor']}")
 
                 try:
                     loop = asyncio.get_running_loop()
                     self._browser = await loop.run_in_executor(
                         None,
                         lambda: Chrome(
-                            service = Service(config['chromedriver_path']),
-                            options = chrome_options
+                            service=Service(config['chromedriver_path']),
+                            options=chrome_options
                         )
                     )
                     logger.info("浏览器实例已创建")
@@ -85,7 +55,7 @@ class BrowserManager:
                     logger.error(f"浏览器启动失败: {str(e)}")
                     raise
             
-            self._ref_count += 1  # 增加引用计数
+            self._ref_count += 1
             return self._browser
     
     async def release_browser(self):
@@ -93,10 +63,8 @@ class BrowserManager:
             self._ref_count = max(0, self._ref_count - 1)
             if self._ref_count == 0 and self._browser is not None:
                 try:
-                    await asyncio.get_running_loop().run_in_executor(
-                        None, 
-                        self._browser.quit()
-                    )
+                    quit_func = self._browser.quit
+                    await asyncio.get_running_loop().run_in_executor(None, quit_func)
                     logger.info("浏览器实例已关闭")
 
                 except Exception as e:
@@ -106,35 +74,32 @@ class BrowserManager:
                     self._browser = None
     
     async def execute_with_browser(self, config, func):
-        # 获取浏览器实例锁，确保同一时间只有一个任务使用浏览器
+        """获取浏览器并执行操作"""
         browser = await self.get_browser(config)
         try:
             async with self._browser_lock:
                 return await func(browser)
         finally:
-            await self.release_browser() # 确保释放资源
+            await self.release_browser()
                 
     async def shutdown_browser(self):
+        """强制关闭浏览器（用于插件终止时）"""
         async with self._async_lock:
             if self._browser is not None:
                 try:
-                    await asyncio.get_running_loop().run_in_executor(
-                        None, 
-                        self._browser.quit()
-                    )
-                    logger.info("浏览器实例已关闭")
+                    quit_func = self._browser.quit
+                    await asyncio.get_running_loop().run_in_executor(None, quit_func)
+                    logger.info("浏览器实例已强制关闭")
                     
                 except Exception as e:
-                    logger.error(f"浏览器关闭失败: {str(e)}")
+                    logger.error(f"浏览器强制关闭失败: {str(e)}")
                     
                 finally:
                     self._browser = None
                     self._ref_count = 0
 
-@register("bettermd2img", "MLSLi", "更好的Markdown转图片", "1.1.4")
+@register("bettermd2img", "MLSLi", "更好的Markdown转图片", "1.2.0")
 class MyPlugin(Star):
-
-    _browser_manager = BrowserManager()
 
     def _replace_by_func(self, input_str, prefix, suffix, process_func):
         pattern = re.escape(prefix) + r'(.*?)' + re.escape(suffix)
@@ -155,25 +120,23 @@ class MyPlugin(Star):
         return '<div class="inline-math">$' + text + '$</div>'
 
     def _clean_code_blocks(self, text):
-        # 正则表达式匹配三个反引号包围的代码块
-        pattern = r"(\s*)```(?:\s*\n?)([\s\S]*?)(?:\n?\s*)```(\s*)"
+        pattern = r"(\s*)```(\w*)\s*\n([\s\S]*?)\s*```(\s*)"
     
         def replace_match(match):
-        # match.group(0): 完整匹配项
-        # match.group(1): 开头的空格
-        # match.group(2): 中间内容
-        # match.group(3): 结尾的空格
-            content = match.group(2)
-            return f"\n```\n{content}\n```\n"
+            lang = match.group(2)
+            content = match.group(3).strip()
+            if lang:
+                return f"\n```{lang}\n{content}\n```\n"
+            else:
+                return f"\n```\n{content}\n```\n"
     
-    # re.DOTALL确保.匹配换行符
-        return re.sub(pattern, replace_match, text, flags=re.DOTALL)    
+        return re.sub(pattern, replace_match, text, flags=re.DOTALL)
 
     async def _generate_and_send_image(self, text: str, event: AstrMessageEvent, is_llm_response: bool):
         try:
             image_path = await self._browser_manager.execute_with_browser(
-            self.browser_config,
-            lambda browser: self.mdtext_to_image(text, browser)
+                self.browser_config,
+                lambda browser: self.mdtext_to_image(text, browser)
             )
             # 判断是否是LLM回复
             if is_llm_response: 
@@ -190,7 +153,7 @@ class MyPlugin(Star):
             error_msg = f"转换失败: {str(e)}"
 
             if is_llm_response:
-                await event.send(MessageChain().message(message = error_msg))
+                await event.send(MessageChain().message(message=error_msg))
             else:
                 yield event.plain_result(error_msg)
 
@@ -201,7 +164,6 @@ class MyPlugin(Star):
 
         html = self._replace_by_func(html, '<script type="math/tex; mode=display">', '</script>', self._in_block_str)
         html = self._replace_by_func(html, '<script type="math/tex">', '</script>', self._in_line_str)
-        # logger.info(html)
         
         css_theme_path = self.light_theme_css_path
         if self.is_dark_theme:
@@ -216,51 +178,63 @@ class MyPlugin(Star):
                     raise ValueError(f"背景图片未找到: {bg_path}")
                 
                 bg_url = bg_path.replace(" ", "%20")
-                # logger.info(self.background_template.format(bg_url))
                 html_text = self.html_template.format(css_theme_path, self.html_style, self.code_css_styles, self.script, self.background_template.format(bg_url), html)
 
             except Exception as e:
                 logger.error(f"背景图处理失败: {e}")
-                html_text = self.html_template.format(css_theme_path, self.html_style, self.code_css_styles, self.script, "", html)  # 降级为无背景
+                html_text = self.html_template.format(css_theme_path, self.html_style, self.code_css_styles, self.script, "", html)
 
         else:
             html_text = self.html_template.format(css_theme_path, self.html_style, self.code_css_styles, self.script, "", html)
 
         logger.info(html_text)
 
-        with tempfile.NamedTemporaryFile(mode = "w", encoding = "utf-8", suffix = ".html", delete = False) as f:
-                temp_html_path = f.name
-                f.write(html_text)
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".html", delete=False) as f:
+            temp_html_path = f.name
+            f.write(html_text)
             
         screenshot_path = temp_html_path.replace(".html", ".png")
 
         try:
-            browser.get(pathlib.Path(temp_html_path).as_uri())
-
-            # 等待 JavaScript 执行完成（根据内容调整等待时间）
-            await asyncio.sleep(2)  # 对于 MathJax 可能需要更长时间
-
+            loop = asyncio.get_running_loop()
+            
+            await loop.run_in_executor(None, browser.get, pathlib.Path(temp_html_path).as_uri())
+            
+            def wait_for_mathjax(driver):
+                try:
+                    # 等待 MathJax 完成渲染
+                    return driver.execute_script("return typeof MathJax !== 'undefined' && MathJax.typesetPromise && MathJax.typesetPromise.isPending !== true;")
+                except:
+                    return True
+            
+            await loop.run_in_executor(None, lambda: WebDriverWait(browser, 10).until(lambda d: wait_for_mathjax(d) or True))
+            await asyncio.sleep(0.5)
+            
             # 获取文档实际高度
-            document_height = browser.execute_script(
-                "return Math.max("
-                "document.body.scrollHeight, "
-                "document.body.offsetHeight, "
-                "document.documentElement.clientHeight, "
-                "document.documentElement.scrollHeight, "
-                "document.documentElement.offsetHeight"
-                ");"
+            document_height = await loop.run_in_executor(
+                None,
+                lambda: browser.execute_script(
+                    "return Math.max("
+                    "document.body.scrollHeight, "
+                    "document.body.offsetHeight, "
+                    "document.documentElement.clientHeight, "
+                    "document.documentElement.scrollHeight, "
+                    "document.documentElement.offsetHeight"
+                    ");"
+                )
             )
             document_height += self.padding_below
 
-            browser.set_window_size(
+            await loop.run_in_executor(
+                None,
+                browser.set_window_size,
                 self.browser_config['output_image_width'],
                 max(document_height, self.output_image_height)
             )
 
-            await asyncio.sleep(1)
+            await asyncio.sleep(0.3)
 
-            # 截图保存
-            browser.save_screenshot(screenshot_path)
+            await loop.run_in_executor(None, browser.save_screenshot, screenshot_path)
 
         except Exception as e:
             logger.error(f"转换失败: {str(e)}")
@@ -275,16 +249,43 @@ class MyPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
         
+        self._browser_manager = BrowserManager()
+
+        self.chromedriver_path = config.get("chromedriver_path", "/usr/bin/chromedriver")
+        self.output_image_width = config.get("output_image_width", 1200)
+        self.output_image_height = config.get("output_image_height", 800)
+        self.background_image = config.get("background_image", "")
+        self.is_dark_theme = config.get("is_dark_theme", False)
+        self.md2img_len_limit = config.get("md2img_len_limit", 100)
+        self.padding_below = config.get("padding_below", 50)
+        self.device_scale_factor = config.get("device_scale_factor", 1.0)
+
+        self.local_path = os.path.dirname(os.path.realpath(__file__)) + os.sep
+        self.light_theme_css_path = self.local_path + "github-markdown-light.css"
+        self.dark_theme_css_path = self.local_path + "github-markdown-dark.css"
+
+        self.browser_config = {
+            "chromedriver_path": self.chromedriver_path,
+            "output_image_width": self.output_image_width,
+            "output_image_height": self.output_image_height,
+            "device_scale_factor": self.device_scale_factor
+        }
+
+        self.pygments_style = 'monokai' if self.is_dark_theme else 'default'
+
+        self.base_styles = HtmlFormatter(style=self.pygments_style).get_style_defs('.codehilite')
+
         self.md = Markdown(
-            extensions = ['mdx_math', 'extra', 'tables', 'codehilite'],
-            extension_configs = {
-            'mdx_math': {'enable_dollar_delimiter': True},
-            'codehilite': {
-                'guess_lang': False,  # 禁用自动语言检测
-                'pygments_style': 'monokai'  # 设置代码高亮样式
+            extensions=['mdx_math', 'extra', 'tables', 'codehilite'],
+            extension_configs={
+                'mdx_math': {'enable_dollar_delimiter': True},
+                'codehilite': {
+                    'guess_lang': False,
+                    'pygments_style': self.pygments_style,  # 使用与CSS一致的样式
+                    'css_class': 'codehilite'
                 }
             }
-        ) # Markdown配置，使其支持数学表达式
+        )
 
         self.html_template = """
         <html>
@@ -295,7 +296,7 @@ class MyPlugin(Star):
             <style> {} </style>
             <style type="text/css"> {} </style>
             <script> {} </script>
-            <script async src="https://cdn.jsdmirror.com/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+            <script async src="https://cdn.jsdmirror.com/npm/mathjax@3/es5/tex-mml-chtml.js "></script>
         </head>
         <body {}> 
         <article class="markdown-body">
@@ -322,7 +323,7 @@ class MyPlugin(Star):
 
         @media (max-width: 767px) {
             .markdown-body {
-            padding: 15px;
+                padding: 15px;
             }
         }
 
@@ -342,15 +343,15 @@ class MyPlugin(Star):
         self.script = """
         MathJax = {
             tex: {
-            inlineMath: [
-            ['$', '$']         // 支持 $...$
-            ],
-            tags: 'ams'  // 启用\tag{}
+                inlineMath: [
+                    ['$', '$']
+                ],
+                tags: 'ams'
             }
         };
         """
 
-        self.no_boaders = """
+        self.no_borders = """
         pre, .codehilite, td.linenos, td.linenos .normal, 
         td.linenos .special, span.linenos, span.linenos.special,
         .codehilite .hll, .codehilite table, .codehilite td {
@@ -365,54 +366,35 @@ class MyPlugin(Star):
 
         self.code_font_style = """
         .codehilite {
-        font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace !important;
+            font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace !important;
             background: BG;
             border-radius: 0px;
         }
         """
-        # 一堆html样式和模板，没错，是魔法强力胶！
-
-        self.chromedriver_path = config.get("chromedriver_path", "/usr/bin/chromedriver")
-        self.output_image_width = config.get("output_image_width", 1200)
-        self.output_image_height = config.get("output_image_height", 800)
-        self.background_image = config.get("background_image", "")
-        self.is_dark_theme = config.get("is_dark_theme", False)
-        self.md2img_len_limit = config.get("md2img_len_limit", 100)
-        self.padding_below = config.get("padding_below", 150)
-
-        # 一堆配置
-        self.local_path = os.path.dirname(os.path.realpath(__file__)) + os.sep
-        self.light_theme_css_path = self.local_path + "github-markdown-light.css"
-        self.dark_theme_css_path = self.local_path + "github-markdown-dark.css"
-
-        # 获取文件绝对路径
-        self.browser_config = {
-            "chromedriver_path": self.chromedriver_path,
-            "output_image_width": self.output_image_width,
-            "output_image_height": self.output_image_height
+    
+        self.override_styles = """
+        .codehilite pre, .codehilite code {
+            background-color: transparent !important;
         }
-        # 浏览器配置
+        """
 
-        self.code_css_styles = HtmlFormatter().get_style_defs('.codehilite') + self.no_boaders + self.code_font_style.replace("BG", "#2d2d2d" if self.is_dark_theme else "#f8f8f8")
-        # 代码高亮
+        self.code_css_styles = self.base_styles + self.no_borders + self.code_font_style.replace("BG", "#2d2d2d" if self.is_dark_theme else "#f6f8fa") + self.override_styles
 
     async def initialize(self):
-        """可选择实现异步的插件初始化方法，当实例化该插件类之后会自动调用该方法。"""
+        """插件初始化时预创建浏览器实例"""
         logger.info("正在配置浏览器...")
         await self._browser_manager.get_browser(self.browser_config)
 
-    # Markdown转图片的命令
     @filter.command("md2img")
     async def markdown_to_image(self, event: AstrMessageEvent):
-        """Markdown转图片指令""" # 这是 handler 的描述，将会被解析方便用户了解插件内容。建议填写。
+        """Markdown转图片指令"""
         user_name = event.get_sender_name()
-        message_str = event.message_str # 用户发的纯文本消息字符串
-        message_chain = event.get_messages() # 用户所发的消息的消息链 # from astrbot.api.message_components import *
-        # logger.info(message_chain)
+        message_str = event.message_str
+        message_chain = event.get_messages()
         
         pattern = r'^' + re.escape('md2img')
         message_str = re.sub(pattern, '', message_str)
-        # 去掉指令开头内容
+        
         if not message_str:
             yield event.plain_result("请输入要转换的Markdown内容")
             return
@@ -421,26 +403,25 @@ class MyPlugin(Star):
             yield result
 
     async def terminate(self):
+        """插件终止时确保浏览器被关闭"""
         logger.info("正在销毁浏览器...")
-        await self._browser_manager.shutdown_browser()
-        """可选择实现异步的插件销毁方法，当插件被卸载/停用时会调用。"""
+        try:
+            await self._browser_manager.shutdown_browser()
+        except Exception as e:
+            logger.error(f"终止时关闭浏览器失败: {e}")
 
     @filter.on_llm_response()
     async def on_llm_resp(self, event: AstrMessageEvent, resp: LLMResponse):
         """LLM响应后修改成图片形式的消息发送"""
         rawtext = resp.result_chain.chain[0].text
-        # logger.info(rawtext)
         
         if len(rawtext) > self.md2img_len_limit and self.md2img_len_limit > 0:
             try:
                 async for _ in self._generate_and_send_image(rawtext, event, True):
-                    return  # 不需要处理生成器产生的值
-                event.stop_event()  # 停止后续处理，避免重复发送文本消息
+                    return
+                event.stop_event()
 
             except Exception as e:
                 logger.error(f"处理失败: {str(e)}")
-                msg_chain = MessageChain().message(message = f"处理失败: {str(e)}")
-
+                msg_chain = MessageChain().message(message=f"处理失败: {str(e)}")
                 await event.send(msg_chain)
-        else:
-            pass
