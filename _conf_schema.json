@@ -29,6 +29,12 @@
         "hint": "",
         "default": false
     },
+    "output_link": {
+        "description": "是否输出Markdown内的链接",
+        "type": "bool",
+        "hint": "",
+        "default": false
+    },
     "md2img_len_limit": {
         "description": "LLM输出结果超过字数超过多少后转为图片，小于等于0则禁用，注意转为图片后不会再发送文字消息",
         "type": "int",

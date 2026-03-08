@@ -38,11 +38,16 @@
 | md2img_len_limit|  LLM输出结果超过多少长度后转为图片|  100 |
 | padding_below | 对于生成的图片，自适应时向下填充的像素数 | 50 |
 | device_scale_factor | 缩放系数 | 1.0 |
+| output_link | 是否输出Markdown内的链接 | false |
 
 ## 计划
 - 支持更多Markdown语法???
 
 ## 更新日志
+
+### v1.2.1
+- 修复在部分情况下数学表达式无法识别的问题
+- 增加链接提取功能
 
 ### v1.2.0
 - 丢弃原有的chromium单例，处理速度大幅提升

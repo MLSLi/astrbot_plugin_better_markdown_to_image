@@ -12,6 +12,7 @@ from astrbot.api.star import Context, Star, register
 from astrbot.api import logger, AstrBotConfig
 from astrbot.api.provider import LLMResponse
 
+import astrbot.api.message_components as Comp
 import os
 import asyncio
 import re
@@ -98,7 +99,7 @@ class BrowserManager:
                     self._browser = None
                     self._ref_count = 0
 
-@register("bettermd2img", "MLSLi", "更好的Markdown转图片", "1.2.0")
+@register("bettermd2img", "MLSLi", "更好的Markdown转图片", "1.2.1")
 class MyPlugin(Star):
 
     def _replace_by_func(self, input_str, prefix, suffix, process_func):
@@ -118,6 +119,32 @@ class MyPlugin(Star):
     
     def _in_line_str(self, text):
         return '<div class="inline-math">$' + text + '$</div>'
+    
+    def _extract_md_links(self, text, include_images=True):
+        links = []
+    
+        if include_images:
+            pattern = r'\[(?:[^\[\]]|\[[^\[\]]*\])*\]\(([^)\s]+)(?:\s*["\'][^"\']*["\'])?\)'
+        else:
+            pattern = r'(?<!!)\[(?:[^\[\]]|\[[^\[\]]*\])*\]\(([^)\s]+)(?:\s*["\'][^"\']*["\'])?\)'
+    
+        links.extend(re.findall(pattern, text))
+
+        ref_pattern = r'^\s*\[[^\]]+\]:\s*(\S+)(?:\s+["\'][^"\']*["\'])?\s*$'
+        links.extend(re.findall(ref_pattern, text, re.MULTILINE))
+    
+        auto_pattern = r'<(https?://[^>]+)>'
+        links.extend(re.findall(auto_pattern, text))
+    
+        if not links:
+            return ""
+
+        return self.protect_multiline("所有链接:\n" + '\n'.join(links))
+    
+    def protect_multiline(self, text):
+        lines = text.split('\n')
+        protected = [f"\u200b{line}\u200b" for line in lines]
+        return '\n'.join(protected)
 
     def _clean_code_blocks(self, text):
         pattern = r"(\s*)```(\w*)\s*\n([\s\S]*?)\s*```(\s*)"
@@ -125,7 +152,10 @@ class MyPlugin(Star):
         def replace_match(match):
             lang = match.group(2)
             content = match.group(3).strip()
-            if lang:
+            logger.info(f"language = {lang}")
+            if lang == "latex" or lang == "katex" or lang == "math":
+                return f'\n\\[{content}\\]\n'
+            elif lang:
                 return f"\n```{lang}\n{content}\n```\n"
             else:
                 return f"\n```\n{content}\n```\n"
@@ -138,11 +168,20 @@ class MyPlugin(Star):
                 self.browser_config,
                 lambda browser: self.mdtext_to_image(text, browser)
             )
+
+            links = self._extract_md_links(text)
+            chain = [
+                Comp.Image.fromFileSystem(image_path),
+            ]
+
+            if self.output_link and links:
+                chain.append(Comp.Plain(links))
+
             # 判断是否是LLM回复
             if is_llm_response: 
-                await event.send(MessageChain().file_image(path=image_path))
+                await event.chain_result(chain)
             else:
-                yield event.image_result(image_path)
+                yield event.chain_result(chain)
 
             await asyncio.sleep(10)
             if os.path.exists(image_path):
@@ -259,6 +298,7 @@ class MyPlugin(Star):
         self.md2img_len_limit = config.get("md2img_len_limit", 100)
         self.padding_below = config.get("padding_below", 50)
         self.device_scale_factor = config.get("device_scale_factor", 1.0)
+        self.output_link = config.get("output_link", False)
 
         self.local_path = os.path.dirname(os.path.realpath(__file__)) + os.sep
         self.light_theme_css_path = self.local_path + "github-markdown-light.css"
