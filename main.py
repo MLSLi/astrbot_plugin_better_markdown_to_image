@@ -18,6 +18,8 @@ import asyncio
 import re
 import pathlib
 import tempfile
+import time
+from PIL import Image, ImageChops
 
 class BrowserManager:
     def __init__(self):
@@ -152,8 +154,7 @@ class MyPlugin(Star):
             <link rel="stylesheet" type="text/css" href="{}">
             <style> {} </style>
             <style type="text/css"> {} </style>
-            <script> {} </script>
-            <script async src="https://cdn.jsdmirror.com/npm/mathjax@3/es5/tex-mml-chtml.js  "></script>
+            {}
         </head>
         <body {}>
         <article class="markdown-body">
@@ -249,6 +250,29 @@ class MyPlugin(Star):
             await self._browser_manager.shutdown_browser()
         except Exception as e:
             logger.error(f"终止时关闭浏览器失败: {e}")
+
+    def _trim_bottom_blank(self, image_path):
+        """裁切图片底部的空白区域"""
+        if self.background_image:
+            return  # 有背景图时跳过自动裁切
+        try:
+            img = Image.open(image_path)
+            width, height = img.size
+            # 采样底部右下角像素作为背景色
+            bg_color = img.getpixel((width - 1, height - 1))
+            bg = Image.new(img.mode, img.size, bg_color)
+            diff = ImageChops.difference(img, bg)
+            # 转为灰度并使用阈值过滤微小色差/噪点
+            diff_gray = diff.convert('L')
+            diff_gray = diff_gray.point(lambda x: 255 if x > 10 else 0)
+            bbox = diff_gray.getbbox()
+            if bbox:
+                crop_bottom = min(bbox[3] + self.padding_below, height)
+                if crop_bottom < height - 5:  # 仅当能节省超过5px时才裁切
+                    img.crop((0, 0, width, crop_bottom)).save(image_path)
+                    logger.info(f"已裁切底部空白: {height}px -> {crop_bottom}px")
+        except Exception as e:
+            logger.warning(f"裁切空白区域失败: {e}")
 
     def _replace_by_func(self, input_str, prefix, suffix, process_func):
         pattern = re.escape(prefix) + r'(.*?)' + re.escape(suffix)
@@ -402,9 +426,17 @@ class MyPlugin(Star):
         text = self._clean_code_blocks(text)
 
         html = self.md.convert(text)
+        self.md.reset()
 
         html = self._replace_by_func(html, '<script type="math/tex; mode=display">', '</script>', self._in_block_str)
         html = self._replace_by_func(html, '<script type="math/tex">', '</script>', self._in_line_str)
+
+        # 仅在有数学内容时加载 MathJax（避免无条件加载 CDN 资源）
+        has_math = 'class="block-math"' in html or 'class="inline-math"' in html
+        if has_math:
+            mathjax_block = f'<script>{self.script}</script>\n            <script async src="https://cdn.jsdmirror.com/npm/mathjax@3/es5/tex-mml-chtml.js"></script>'
+        else:
+            mathjax_block = ''
 
         css_theme_path = self.light_theme_css_path
         if self.is_dark_theme:
@@ -419,14 +451,14 @@ class MyPlugin(Star):
                     raise ValueError(f"背景图片未找到: {bg_path}")
 
                 bg_url = bg_path.replace(" ", "%20")
-                html_text = self.html_template.format(css_theme_path, self.html_style, self.code_css_styles, self.script, self.background_template.format(bg_url), html)
+                html_text = self.html_template.format(css_theme_path, self.html_style, self.code_css_styles, mathjax_block, self.background_template.format(bg_url), html)
 
             except Exception as e:
                 logger.error(f"背景图处理失败: {e}")
-                html_text = self.html_template.format(css_theme_path, self.html_style, self.code_css_styles, self.script, "", html)
+                html_text = self.html_template.format(css_theme_path, self.html_style, self.code_css_styles, mathjax_block, "", html)
 
         else:
-            html_text = self.html_template.format(css_theme_path, self.html_style, self.code_css_styles, self.script, "", html)
+            html_text = self.html_template.format(css_theme_path, self.html_style, self.code_css_styles, mathjax_block, "", html)
 
         logger.info(html_text)
 
@@ -438,44 +470,108 @@ class MyPlugin(Star):
 
         try:
             loop = asyncio.get_running_loop()
+            render_start = time.time()
 
             await loop.run_in_executor(None, browser.get, pathlib.Path(temp_html_path).as_uri())
+            logger.info(f"  页面加载耗时: {time.time() - render_start:.3f}s")
 
-            def wait_for_mathjax(driver):
-                try:
-                    # 等待 MathJax 完成渲染
-                    return driver.execute_script("return typeof MathJax !== 'undefined' && MathJax.typesetPromise && MathJax.typesetPromise.isPending !== true;")
-                except:
-                    return True
+            # 等待所有异步内容加载完成（MathJax + 图片）
+            wait_start = time.time()
+            await loop.run_in_executor(None, lambda: browser.execute_async_script(
+                """
+                var callback = arguments[arguments.length - 1];
+                var done = false;
+                var timer = setTimeout(function() {
+                    if (!done) { done = true; callback('timeout'); }
+                }, 8000);
 
-            await loop.run_in_executor(None, lambda: WebDriverWait(browser, 10).until(lambda d: wait_for_mathjax(d) or True))
-            await asyncio.sleep(0.5)
+                function finish() {
+                    if (done) return;
+                    done = true;
+                    clearTimeout(timer);
+                    callback('ready');
+                }
 
-            # 获取文档实际高度
-            document_height = await loop.run_in_executor(
+                function waitImages(cb) {
+                    var imgs = document.querySelectorAll('img');
+                    if (imgs.length === 0) { cb(); return; }
+                    var pending = 0;
+                    for (var i = 0; i < imgs.length; i++) {
+                        if (!imgs[i].complete) {
+                            pending++;
+                            (function(img) {
+                                img.addEventListener('load', check);
+                                img.addEventListener('error', check);
+                            })(imgs[i]);
+                        }
+                    }
+                    if (pending === 0) { cb(); return; }
+                    function check() {
+                        pending--;
+                        if (pending <= 0) cb();
+                    }
+                }
+
+                function waitMathJax(cb) {
+                    var hasMath = document.querySelectorAll('.block-math, .inline-math').length > 0;
+                    if (!hasMath) { cb(); return; }
+                    var waited = 0;
+                    function poll() {
+                        if (typeof MathJax !== 'undefined' && MathJax.startup && MathJax.startup.promise) {
+                            MathJax.startup.promise.then(cb).catch(cb);
+                            return;
+                        }
+                        waited += 100;
+                        if (waited > 5000) { cb(); return; }
+                        setTimeout(poll, 100);
+                    }
+                    poll();
+                }
+
+                waitImages(function() { waitMathJax(finish); });
+                """
+            ))
+            logger.info(f"  内容等待耗时: {time.time() - wait_start:.3f}s")
+
+            # 获取文档实际内容高度（基于 .markdown-body 元素）
+            content_height = await loop.run_in_executor(
                 None,
                 lambda: browser.execute_script(
-                    "return Math.max("
-                    "document.body.scrollHeight, "
-                    "document.body.offsetHeight, "
-                    "document.documentElement.clientHeight, "
-                    "document.documentElement.scrollHeight, "
-                    "document.documentElement.offsetHeight"
-                    ");"
+                    """
+                    var article = document.querySelector('.markdown-body');
+                    if (article) {
+                        var rect = article.getBoundingClientRect();
+                        var scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                        return Math.ceil(rect.bottom + scrollTop);
+                    }
+                    return Math.max(
+                        document.body.scrollHeight,
+                        document.body.offsetHeight,
+                        document.documentElement.clientHeight,
+                        document.documentElement.scrollHeight,
+                        document.documentElement.offsetHeight
+                    );
+                    """
                 )
             )
-            document_height += self.padding_below
+            content_height += self.padding_below
 
+            # 直接使用内容高度，不再与 output_image_height 取最大值
             await loop.run_in_executor(
                 None,
                 browser.set_window_size,
                 self.browser_config['output_image_width'],
-                max(document_height, self.output_image_height)
+                max(content_height, 100)
             )
 
-            await asyncio.sleep(0.3)
+            await asyncio.sleep(0.1)
 
             await loop.run_in_executor(None, browser.save_screenshot, screenshot_path)
+
+            # 裁切底部空白区域
+            self._trim_bottom_blank(screenshot_path)
+
+            logger.info(f"  截图总耗时: {time.time() - render_start:.3f}s")
 
         except Exception as e:
             logger.error(f"转换失败: {str(e)}")
