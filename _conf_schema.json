@@ -11,16 +11,10 @@
         "hint": "",
         "default": 1200
     },
-    "output_image_height": {
-        "description": "输出图片高度，如果高度自适应(超出输出内容才会生效)未生效",
-        "type": "int",
-        "hint": "",
-        "default": 800
-    },
     "background_image": {
         "description": "背景图片",
         "type": "string",
-        "hint": "如果需要的话，输入背景图片的路径",
+        "hint": "如果需要的话，输入背景图片的路径 (不太建议使用哦)",
         "default": ""
     },
     "is_dark_theme": {

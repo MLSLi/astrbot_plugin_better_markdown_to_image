@@ -102,7 +102,7 @@ class BrowserManager:
                     self._ref_count = 0
 
 
-@register("bettermd2img", "MLSLi", "更好的Markdown转图片", "1.2.2")
+@register("bettermd2img", "MLSLi", "更好的Markdown转图片", "1.2.3")
 class MyPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
@@ -111,7 +111,6 @@ class MyPlugin(Star):
 
         self.chromedriver_path = config.get("chromedriver_path", "/usr/bin/chromedriver")
         self.output_image_width = config.get("output_image_width", 1200)
-        self.output_image_height = config.get("output_image_height", 800)
         self.background_image = config.get("background_image", "")
         self.is_dark_theme = config.get("is_dark_theme", False)
         self.md2img_len_limit = config.get("md2img_len_limit", 100)
@@ -126,7 +125,6 @@ class MyPlugin(Star):
         self.browser_config = {
             "chromedriver_path": self.chromedriver_path,
             "output_image_width": self.output_image_width,
-            "output_image_height": self.output_image_height,
             "device_scale_factor": self.device_scale_factor
         }
 
@@ -319,7 +317,7 @@ class MyPlugin(Star):
         return '\n'.join(protected)
 
     def _clean_code_blocks(self, text):
-        pattern = r"```(\w*)\s*\n([\s\S]*?)```"
+        pattern = r"```\s*(\S*)\s*\n([\s\S]*?)```" # 更好地识别代码块
         
         def replace_match(match):
             lang = match.group(1)

@@ -32,7 +32,6 @@
 |    :---:    |    :----:   |     :---:     |
 | chromedriver_path      | chromedriver路径       | /usr/bin/chromedriver   |
 | output_image_width  | 输出图片长度        | 1200      |
-| output_image_height| 自适应未启用时的输出图片宽度 | 800 |
 | background_image  |  背景图片  | 空   |
 | is_dark_theme   |  是否为暗色主题  |  false |
 | md2img_len_limit|  LLM输出结果超过多少长度后转为图片|  100 |
@@ -44,6 +43,11 @@
 - 支持更多Markdown语法???
 
 ## 更新日志
+
+### v1.2.3
+- 修复自适应在部分情况下会失效的问题
+- 改善渲染方式，在没有数学公式地情况下加速转换，并适当裁剪底部空白区域，由[@superexboom](https://github.com/superexboom)提供，十分感谢！
+- 修复部分情况下，代码块无法正确识别的问题
 
 ### v1.2.2
 - 紧急修复来自LLM的输出无法转图片的问题
