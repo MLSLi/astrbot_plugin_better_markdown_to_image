@@ -34,6 +34,7 @@
 | output_image_width  | 输出图片长度        | 1200      |
 | background_image  |  背景图片  | 空   |
 | is_dark_theme   |  是否为暗色主题  |  false |
+| output_image_height| 自适应未启用时的输出图片宽度 | 800 |
 | md2img_len_limit|  LLM输出结果超过多少长度后转为图片|  100 |
 | padding_below | 对于生成的图片，自适应时向下填充的像素数 | 50 |
 | device_scale_factor | 缩放系数 | 1.0 |
@@ -43,6 +44,9 @@
 - 支持更多Markdown语法???
 
 ## 更新日志
+
+### v1.2.4
+- 回滚配置`output_image_height`，因为我忘记代码还有引用了，sorry(doge)
 
 ### v1.2.3
 - 修复自适应在部分情况下会失效的问题

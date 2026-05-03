@@ -11,6 +11,12 @@
         "hint": "",
         "default": 1200
     },
+    "output_image_height": {
+        "description": "输出图片高度，如果高度自适应(超出输出内容才会生效)未生效",
+        "type": "int",
+        "hint": "",
+        "default": 800
+    },
     "background_image": {
         "description": "背景图片",
         "type": "string",
